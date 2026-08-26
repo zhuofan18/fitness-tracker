@@ -100,7 +100,7 @@ export default async function PlanPage() {
               </p>
             )}
 
-            {plan.meal_plan.length > 0 && (
+            {(plan.meal_plan ?? []).length > 0 && (
               <div className="flex flex-col gap-3">
                 <h2 className="font-semibold">Curated meals for the day</h2>
                 <p className="text-xs text-black/50 dark:text-white/50">
@@ -108,7 +108,7 @@ export default async function PlanPage() {
                   available&quot; list - update that list and hit Regenerate
                   to refresh these.
                 </p>
-                {plan.meal_plan.map((meal, i) => {
+                {(plan.meal_plan ?? []).map((meal, i) => {
                   const totals = meal.items.reduce(
                     (acc, item) => ({
                       calories: acc.calories + item.calories,

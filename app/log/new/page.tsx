@@ -16,8 +16,11 @@ interface AnalysisResult {
 
 export default function NewLogPage() {
   const router = useRouter();
+  const [mode, setMode] = useState<"photo" | "describe">("photo");
   const [file, setFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [description, setDescription] = useState("");
+  const [lookup, setLookup] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -32,13 +35,25 @@ export default function NewLogPage() {
     setError(null);
   }
 
+  function switchMode(next: "photo" | "describe") {
+    setMode(next);
+    setResult(null);
+    setError(null);
+  }
+
   async function handleAnalyze() {
-    if (!file) return;
+    if (mode === "photo" && !file) return;
+    if (mode === "describe" && !description.trim()) return;
     setAnalyzing(true);
     setError(null);
 
     const formData = new FormData();
-    formData.append("photo", file);
+    if (mode === "photo" && file) {
+      formData.append("photo", file);
+    } else {
+      formData.append("description", description.trim());
+      formData.append("lookup", String(lookup));
+    }
 
     const res = await fetch("/api/analyze-food", {
       method: "POST",
@@ -49,7 +64,7 @@ export default function NewLogPage() {
 
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
-      setError(body.error ?? "Failed to analyze photo");
+      setError(body.error ?? "Failed to analyze food");
       return;
     }
 
@@ -83,7 +98,7 @@ export default function NewLogPage() {
   }
 
   async function handleSave() {
-    if (!result || !file) return;
+    if (!result) return;
     setSaving(true);
     setError(null);
 
@@ -98,15 +113,18 @@ export default function NewLogPage() {
       return;
     }
 
-    const photoPath = `${user.id}/${Date.now()}-${file.name}`;
-    const { error: uploadError } = await supabase.storage
-      .from("food-photos")
-      .upload(photoPath, file);
+    let photoPath: string | null = null;
+    if (file) {
+      photoPath = `${user.id}/${Date.now()}-${file.name}`;
+      const { error: uploadError } = await supabase.storage
+        .from("food-photos")
+        .upload(photoPath, file);
 
-    if (uploadError) {
-      setError(uploadError.message);
-      setSaving(false);
-      return;
+      if (uploadError) {
+        setError(uploadError.message);
+        setSaving(false);
+        return;
+      }
     }
 
     const { error: insertError } = await supabase.from("food_logs").insert({
@@ -117,6 +135,7 @@ export default function NewLogPage() {
       protein_g: result.total_protein_g,
       carbs_g: result.total_carbs_g,
       fat_g: result.total_fat_g,
+      notes: mode === "describe" ? description.trim() : null,
     });
 
     setSaving(false);
@@ -134,35 +153,89 @@ export default function NewLogPage() {
     <div className="flex flex-col gap-6">
       <h1 className="text-2xl font-semibold">Log food</h1>
 
-      <label className="flex w-fit cursor-pointer flex-col items-center gap-2 rounded border border-dashed border-black/30 px-6 py-8 text-sm dark:border-white/30">
-        {previewUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={previewUrl}
-            alt="Selected food"
-            className="max-h-64 rounded object-contain"
-          />
-        ) : (
-          <span>Tap to take or choose a photo</span>
-        )}
-        <input
-          type="file"
-          accept="image/*"
-          capture="environment"
-          className="hidden"
-          onChange={handleFileChange}
-        />
-      </label>
-
-      {file && !result && (
+      <div className="flex w-fit gap-2 rounded border border-black/10 p-1 text-sm dark:border-white/10">
         <button
-          onClick={handleAnalyze}
-          disabled={analyzing}
-          className="w-fit rounded bg-black px-4 py-2 text-sm text-white disabled:opacity-50 dark:bg-white dark:text-black"
+          type="button"
+          onClick={() => switchMode("photo")}
+          className={`rounded px-3 py-1 ${
+            mode === "photo"
+              ? "bg-black text-white dark:bg-white dark:text-black"
+              : "text-black/60 dark:text-white/60"
+          }`}
         >
-          {analyzing ? "Analyzing..." : "Analyze photo"}
+          Photo
         </button>
+        <button
+          type="button"
+          onClick={() => switchMode("describe")}
+          className={`rounded px-3 py-1 ${
+            mode === "describe"
+              ? "bg-black text-white dark:bg-white dark:text-black"
+              : "text-black/60 dark:text-white/60"
+          }`}
+        >
+          Describe
+        </button>
+      </div>
+
+      {mode === "photo" ? (
+        <label className="flex w-fit cursor-pointer flex-col items-center gap-2 rounded border border-dashed border-black/30 px-6 py-8 text-sm dark:border-white/30">
+          {previewUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={previewUrl}
+              alt="Selected food"
+              className="max-h-64 rounded object-contain"
+            />
+          ) : (
+            <span>
+              Tap to take a photo, or pick one from your gallery - handy if
+              you already snapped it earlier and forgot to log it
+            </span>
+          )}
+          <input
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={handleFileChange}
+          />
+        </label>
+      ) : (
+        <label className="flex flex-col gap-1 text-sm">
+          Describe what you ate
+          <textarea
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            placeholder="e.g. a bowl of chicken fried rice, about the size of a large cereal bowl, with a fried egg on top"
+            rows={3}
+            className="rounded border border-black/20 px-3 py-2 dark:border-white/20"
+          />
+          <span className="text-xs text-black/50 dark:text-white/50">
+            No photo to check against, so include quantities where you can -
+            the more specific, the more accurate the estimate.
+          </span>
+          <label className="mt-1 flex items-center gap-2 text-xs text-black/60 dark:text-white/60">
+            <input
+              type="checkbox"
+              checked={lookup}
+              onChange={(e) => setLookup(e.target.checked)}
+            />
+            Not sure what this dish is called? Search the web to help
+            identify it.
+          </label>
+        </label>
       )}
+
+      {((mode === "photo" && file) || (mode === "describe" && description.trim())) &&
+        !result && (
+          <button
+            onClick={handleAnalyze}
+            disabled={analyzing}
+            className="w-fit rounded bg-black px-4 py-2 text-sm text-white disabled:opacity-50 dark:bg-white dark:text-black"
+          >
+            {analyzing ? "Analyzing..." : "Analyze"}
+          </button>
+        )}
 
       {error && <p className="text-sm text-red-600">{error}</p>}
 

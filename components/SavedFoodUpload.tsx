@@ -108,11 +108,12 @@ export default function SavedFoodUpload() {
   return (
     <div className="flex flex-col gap-3 rounded border border-black/10 p-4 dark:border-white/10">
       <label className="flex w-fit cursor-pointer flex-col items-center gap-2 rounded border border-dashed border-black/30 px-6 py-6 text-sm dark:border-white/30">
-        {file ? file.name : "Photograph a product's nutrition label"}
+        {file
+          ? file.name
+          : "Photograph a product's nutrition label, or pick one from your gallery"}
         <input
           type="file"
           accept="image/*"
-          capture="environment"
           className="hidden"
           onChange={(e) => {
             setFile(e.target.files?.[0] ?? null);

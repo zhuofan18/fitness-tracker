@@ -1,12 +1,47 @@
-import type {
-  Equipment,
-  MesocycleWeek,
-  MuscleGroup,
-  ProgramDay,
-  ProgramExercise,
-  SideImbalance,
-  SplitStyle,
+import {
+  MUSCLE_GROUPS,
+  type Equipment,
+  type MesocycleWeek,
+  type MuscleGroup,
+  type ProgramDay,
+  type ProgramExercise,
+  type SideImbalance,
+  type SplitStyle,
 } from "@/lib/supabase/types";
+
+export interface CustomExerciseInput {
+  muscle_group: MuscleGroup;
+  exercise_name: string;
+}
+
+function shuffle<T>(items: T[]): T[] {
+  const result = [...items];
+  for (let i = result.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [result[i], result[j]] = [result[j], result[i]];
+  }
+  return result;
+}
+
+// Grouped and shuffled per call, not just per muscle group - a listed
+// exercise is a candidate the generator can pick from, not a fixed slot it
+// must always fill the same way, so regenerating varies the picks (and
+// which ones get left out) instead of reproducing the same program every
+// time.
+function groupCustomExercises(
+  customExercises: CustomExerciseInput[],
+): Map<MuscleGroup, string[]> {
+  const pool = new Map<MuscleGroup, string[]>();
+  for (const { muscle_group, exercise_name } of customExercises) {
+    const list = pool.get(muscle_group) ?? [];
+    list.push(exercise_name);
+    pool.set(muscle_group, list);
+  }
+  for (const [muscleGroup, list] of pool) {
+    pool.set(muscleGroup, shuffle(list));
+  }
+  return pool;
+}
 
 // Equipment that allows training one limb at a time - preferred when the
 // user has flagged a left/right imbalance so both sides move independently
@@ -536,12 +571,32 @@ function pickExercise(
   return match ?? template.options[template.options.length - 1];
 }
 
+function pickForSlot(
+  template: ExerciseTemplate,
+  availableEquipment: Set<Equipment | "bodyweight">,
+  preferUnilateral: boolean,
+  customPool: Map<MuscleGroup, string[]>,
+  usedCustomIdx: Map<MuscleGroup, number>,
+): { name: string; equipment: Equipment | "bodyweight" | "custom"; custom: boolean } {
+  const customList = customPool.get(template.muscle_group);
+  if (customList) {
+    const idx = usedCustomIdx.get(template.muscle_group) ?? 0;
+    if (idx < customList.length) {
+      usedCustomIdx.set(template.muscle_group, idx + 1);
+      return { name: customList[idx], equipment: "custom", custom: true };
+    }
+  }
+  const chosen = pickExercise(template, availableEquipment, preferUnilateral);
+  return { name: chosen.name, equipment: chosen.equipment, custom: false };
+}
+
 export function generateWeeklySchedule(
   daysPerWeek: number,
   splitStyle: SplitStyle,
   weakPoints: MuscleGroup[],
   equipment: Equipment[],
   imbalances: SideImbalance[] = [],
+  customExercises: CustomExerciseInput[] = [],
 ): ProgramDay[] {
   const resolved = resolveSplitStyle(splitStyle, daysPerWeek);
   const sequence = SPLIT_DAY_SEQUENCES[resolved];
@@ -553,18 +608,27 @@ export function generateWeeklySchedule(
   const imbalanceByMuscle = new Map(
     imbalances.map((imb) => [imb.muscle_group, imb.weaker_side]),
   );
+  const customPool = groupCustomExercises(customExercises);
 
   const days: ProgramDay[] = [];
   for (let i = 0; i < daysPerWeek; i++) {
     const focusName = sequence[i % sequence.length];
     const template = DAY_TEMPLATES[focusName];
     const hasEmphasis = template.some((ex) => weakSet.has(ex.muscle_group));
+    const usedCustomIdx = new Map<MuscleGroup, number>();
 
     const exercises: ProgramExercise[] = template.map((ex) => {
       const weakerSide = imbalanceByMuscle.get(ex.muscle_group);
-      const chosen = pickExercise(ex, availableEquipment, Boolean(weakerSide));
+      const chosen = pickForSlot(
+        ex,
+        availableEquipment,
+        Boolean(weakerSide),
+        customPool,
+        usedCustomIdx,
+      );
       const emphasis = weakSet.has(ex.muscle_group);
-      const isUnilateral = UNILATERAL_CAPABLE.has(chosen.equipment);
+      const isUnilateral =
+        !chosen.custom && UNILATERAL_CAPABLE.has(chosen.equipment as Equipment | "bodyweight");
       return {
         name: chosen.name,
         muscle_group: ex.muscle_group,
@@ -572,6 +636,7 @@ export function generateWeeklySchedule(
         sets: emphasis ? 4 : 3,
         rep_range: ex.compound ? "5-8" : "8-12",
         emphasis,
+        custom: chosen.custom || undefined,
         note: weakerSide
           ? isUnilateral
             ? `Train one side at a time - match reps/weight to what your ${weakerSide} side can strictly do, and add 1 extra set on the ${weakerSide} to help it catch up.`
@@ -587,9 +652,10 @@ export function generateWeeklySchedule(
     });
   }
 
-  // Frequency top-up: any weak-point muscle group trained fewer than twice a
-  // week gets one extra accessory exercise added to its best-matching day,
-  // without displacing the balanced coverage already in the template.
+  // Frequency top-up: weak points need to hit >= 2x/week; every other
+  // muscle group just needs to appear at all (>= 1x/week) - some splits
+  // (e.g. full_body, bro_split) don't naturally cover every muscle group,
+  // so this is what guarantees nothing gets skipped.
   const frequency = new Map<MuscleGroup, number>();
   for (const day of days) {
     for (const ex of day.exercises) {
@@ -597,17 +663,23 @@ export function generateWeeklySchedule(
     }
   }
 
-  for (const weakPoint of weakPoints) {
-    if ((frequency.get(weakPoint) ?? 0) >= 2) continue;
-    const targetDay = days.find((day) =>
-      day.exercises.some((ex) => ex.muscle_group === weakPoint),
-    );
+  for (const muscleGroup of MUSCLE_GROUPS) {
+    const minFrequency = weakSet.has(muscleGroup) ? 2 : 1;
+    if ((frequency.get(muscleGroup) ?? 0) >= minFrequency) continue;
+    const targetDay =
+      days.find((day) =>
+        day.exercises.some((ex) => ex.muscle_group === muscleGroup),
+      ) ??
+      days.reduce((fewest, day) =>
+        day.exercises.length < fewest.exercises.length ? day : fewest,
+      );
     const extra = findAccessoryFor(
-      weakPoint,
-      targetDay?.exercises ?? [],
+      muscleGroup,
+      targetDay.exercises,
       availableEquipment,
+      customPool,
     );
-    if (targetDay && extra) {
+    if (extra) {
       targetDay.exercises.push(extra);
       if (!targetDay.focus.includes("Emphasis")) {
         targetDay.focus = `${targetDay.focus} (Emphasis)`;
@@ -622,8 +694,26 @@ function findAccessoryFor(
   muscleGroup: MuscleGroup,
   existing: ProgramExercise[],
   availableEquipment: Set<Equipment | "bodyweight">,
+  customPool: Map<MuscleGroup, string[]>,
 ): ProgramExercise | null {
   const existingNames = new Set(existing.map((ex) => ex.name));
+
+  const customList = customPool.get(muscleGroup);
+  if (customList) {
+    const pick = customList.find((name) => !existingNames.has(name));
+    if (pick) {
+      return {
+        name: pick,
+        muscle_group: muscleGroup,
+        equipment: "custom",
+        sets: 3,
+        rep_range: "8-12",
+        emphasis: true,
+        custom: true,
+      };
+    }
+  }
+
   for (const template of Object.values(DAY_TEMPLATES)) {
     for (const ex of template) {
       if (ex.muscle_group !== muscleGroup) continue;

@@ -9,6 +9,7 @@ const LINKS = [
   { href: "/log/new", label: "Log Food" },
   { href: "/saved-foods", label: "Saved" },
   { href: "/history", label: "History" },
+  { href: "/stats", label: "Stats" },
   { href: "/plan", label: "Plan" },
   { href: "/progress", label: "Progress" },
   { href: "/profile", label: "Profile" },

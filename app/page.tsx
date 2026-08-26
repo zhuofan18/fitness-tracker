@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import MealSuggestion from "@/components/MealSuggestion";
+import WaterLogForm from "@/components/WaterLogForm";
 import { createClient } from "@/lib/supabase/server";
 
 export default async function DashboardPage() {
@@ -36,6 +37,17 @@ export default async function DashboardPage() {
     .eq("user_id", user.id)
     .gte("logged_at", startOfDay.toISOString())
     .order("logged_at", { ascending: false });
+
+  const { data: todaysWater } = await supabase
+    .from("water_logs")
+    .select("amount_ml")
+    .eq("user_id", user.id)
+    .gte("logged_at", startOfDay.toISOString());
+
+  const totalWaterMl = (todaysWater ?? []).reduce(
+    (sum, entry) => sum + entry.amount_ml,
+    0,
+  );
 
   const totals = (todaysLogs ?? []).reduce(
     (acc, log) => ({
@@ -126,6 +138,14 @@ export default async function DashboardPage() {
             ))}
           </ul>
         )}
+      </div>
+
+      <div>
+        <h2 className="mb-2 text-lg font-semibold">Water</h2>
+        <p className="mb-2 text-sm text-black/60 dark:text-white/60">
+          {(totalWaterMl / 1000).toFixed(2)}L logged today
+        </p>
+        <WaterLogForm />
       </div>
     </div>
   );

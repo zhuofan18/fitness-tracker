@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import CustomExerciseForm from "@/components/CustomExerciseForm";
 import LiftGoalForm from "@/components/LiftGoalForm";
 import RegenerateButton from "@/components/RegenerateButton";
 import { createClient } from "@/lib/supabase/server";
@@ -12,8 +13,14 @@ export default async function PlanPage() {
 
   if (!user) redirect("/login");
 
-  const [{ data: plan }, { data: program }, { data: liftGoals }, { data: profile }, { data: latestWeight }] =
-    await Promise.all([
+  const [
+    { data: plan },
+    { data: program },
+    { data: liftGoals },
+    { data: profile },
+    { data: latestWeight },
+    { data: customExercises },
+  ] = await Promise.all([
       supabase
         .from("plans")
         .select("*")
@@ -45,6 +52,11 @@ export default async function PlanPage() {
         .order("logged_at", { ascending: false })
         .limit(1)
         .maybeSingle(),
+      supabase
+        .from("custom_exercises")
+        .select("id, muscle_group, exercise_name")
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: true }),
     ]);
 
   let pacingNote: string | null = null;
@@ -87,12 +99,66 @@ export default async function PlanPage() {
                 {pacingNote}
               </p>
             )}
+
+            {plan.meal_plan.length > 0 && (
+              <div className="flex flex-col gap-3">
+                <h2 className="font-semibold">Curated meals for the day</h2>
+                <p className="text-xs text-black/50 dark:text-white/50">
+                  Built from the foods on your profile&apos;s &quot;usually
+                  available&quot; list - update that list and hit Regenerate
+                  to refresh these.
+                </p>
+                {plan.meal_plan.map((meal, i) => {
+                  const totals = meal.items.reduce(
+                    (acc, item) => ({
+                      calories: acc.calories + item.calories,
+                      protein_g: acc.protein_g + item.protein_g,
+                      carbs_g: acc.carbs_g + item.carbs_g,
+                      fat_g: acc.fat_g + item.fat_g,
+                    }),
+                    { calories: 0, protein_g: 0, carbs_g: 0, fat_g: 0 },
+                  );
+                  return (
+                    <div
+                      key={i}
+                      className="rounded border border-black/10 p-3 text-sm dark:border-white/10"
+                    >
+                      <div className="mb-2 flex justify-between font-semibold">
+                        <span>{meal.name}</span>
+                        <span className="text-black/50 dark:text-white/50">
+                          {Math.round(totals.calories)} kcal
+                        </span>
+                      </div>
+                      <ul className="flex flex-col gap-1">
+                        {meal.items.map((item, j) => (
+                          <li key={j} className="flex justify-between">
+                            <span>
+                              {item.name} - {item.quantity_description}
+                            </span>
+                            <span className="text-black/50 dark:text-white/50">
+                              P{Math.round(item.protein_g)} C
+                              {Math.round(item.carbs_g)} F
+                              {Math.round(item.fat_g)}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </>
         ) : (
           <p className="text-sm text-black/60 dark:text-white/60">
             No plan yet - generate one from your profile stats.
           </p>
         )}
+      </section>
+
+      <section className="flex flex-col gap-3">
+        <h1 className="text-2xl font-semibold">Your exercises</h1>
+        <CustomExerciseForm initial={customExercises ?? []} />
       </section>
 
       <section className="flex flex-col gap-3">
@@ -129,6 +195,12 @@ export default async function PlanPage() {
                           <span>
                             {ex.name}
                             {ex.emphasis ? " *" : ""}
+                            {ex.custom && (
+                              <span className="text-xs text-black/40 dark:text-white/40">
+                                {" "}
+                                · from your list
+                              </span>
+                            )}
                           </span>
                           <span className="text-black/50 dark:text-white/50">
                             {ex.sets} x {ex.rep_range}
@@ -145,7 +217,8 @@ export default async function PlanPage() {
                 </div>
               ))}
               <p className="text-xs text-black/50 dark:text-white/50">
-                * extra volume for your specified weak points
+                * extra volume for a weak point, or added to make sure every
+                muscle group gets trained
               </p>
             </div>
 

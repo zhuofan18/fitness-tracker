@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { generateMealPlan } from "@/lib/anthropic";
 import { generateNutritionPlan } from "@/lib/plan";
 import { createClient } from "@/lib/supabase/server";
 
@@ -49,6 +50,23 @@ export async function POST() {
     goal: profile.goal,
   });
 
+  // The macro targets above are the load-bearing part of this route and are
+  // computed deterministically - a hiccup in the AI-curated meal plan
+  // shouldn't block saving them, so this is best-effort with a fallback.
+  let mealPlan: Awaited<ReturnType<typeof generateMealPlan>> = [];
+  try {
+    mealPlan = await generateMealPlan({
+      calorieTarget: plan.calorie_target,
+      proteinG: plan.protein_g,
+      carbsG: plan.carbs_g,
+      fatG: plan.fat_g,
+      availableFoods: profile.available_foods,
+      goalDescription: profile.goal_description,
+    });
+  } catch (error) {
+    console.error("Meal plan curation failed", error);
+  }
+
   const { data: savedPlan, error: insertError } = await supabase
     .from("plans")
     .insert({
@@ -58,6 +76,7 @@ export async function POST() {
       carbs_g: plan.carbs_g,
       fat_g: plan.fat_g,
       estimated_weekly_rate_kg: plan.estimated_weekly_rate_kg,
+      meal_plan: mealPlan,
     })
     .select()
     .single();

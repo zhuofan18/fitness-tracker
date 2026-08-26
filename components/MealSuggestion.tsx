@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import TagInput from "@/components/TagInput";
 
 interface Suggestion {
   items: {
@@ -27,6 +28,8 @@ export default function MealSuggestion({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [suggestion, setSuggestion] = useState<Suggestion | null>(null);
+  const [onHand, setOnHand] = useState<string[]>([]);
+  const [showOnHand, setShowOnHand] = useState(false);
 
   async function handleSuggest() {
     setLoading(true);
@@ -40,6 +43,7 @@ export default function MealSuggestion({
         remaining_protein_g: Math.max(remaining.protein_g, 0),
         remaining_carbs_g: Math.max(remaining.carbs_g, 0),
         remaining_fat_g: Math.max(remaining.fat_g, 0),
+        on_hand: onHand,
       }),
     });
 
@@ -56,6 +60,21 @@ export default function MealSuggestion({
 
   return (
     <div className="flex flex-col gap-2">
+      <button
+        type="button"
+        onClick={() => setShowOnHand((v) => !v)}
+        className="w-fit text-xs underline text-black/60 dark:text-white/60"
+      >
+        {showOnHand ? "Hide" : "What do you have on hand right now? (optional)"}
+      </button>
+      {showOnHand && (
+        <TagInput
+          label="Ingredients you have on hand right now"
+          placeholder="e.g. eggs, spinach, leftover rice"
+          values={onHand}
+          onChange={setOnHand}
+        />
+      )}
       <button
         type="button"
         onClick={handleSuggest}

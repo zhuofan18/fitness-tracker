@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { analyzeFoodPhoto } from "@/lib/anthropic";
+import { analyzeFoodDescription, analyzeFoodPhoto } from "@/lib/anthropic";
 import { createClient } from "@/lib/supabase/server";
 
 const ALLOWED_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
@@ -17,35 +17,45 @@ export async function POST(request: NextRequest) {
 
   const formData = await request.formData();
   const file = formData.get("photo");
-
-  if (!(file instanceof File)) {
-    return NextResponse.json({ error: "Missing photo" }, { status: 400 });
-  }
-
-  if (!ALLOWED_TYPES.has(file.type)) {
-    return NextResponse.json(
-      { error: "Unsupported image type" },
-      { status: 400 },
-    );
-  }
-
-  if (file.size > MAX_BYTES) {
-    return NextResponse.json({ error: "Image too large" }, { status: 400 });
-  }
-
-  const arrayBuffer = await file.arrayBuffer();
-  const base64 = Buffer.from(arrayBuffer).toString("base64");
+  const description = formData.get("description");
+  const lookup = formData.get("lookup") === "true";
 
   try {
-    const analysis = await analyzeFoodPhoto(
-      base64,
-      file.type as "image/jpeg" | "image/png" | "image/webp",
+    if (file instanceof File) {
+      if (!ALLOWED_TYPES.has(file.type)) {
+        return NextResponse.json(
+          { error: "Unsupported image type" },
+          { status: 400 },
+        );
+      }
+      if (file.size > MAX_BYTES) {
+        return NextResponse.json({ error: "Image too large" }, { status: 400 });
+      }
+
+      const arrayBuffer = await file.arrayBuffer();
+      const base64 = Buffer.from(arrayBuffer).toString("base64");
+      const analysis = await analyzeFoodPhoto(
+        base64,
+        file.type as "image/jpeg" | "image/png" | "image/webp",
+      );
+      return NextResponse.json(analysis);
+    }
+
+    if (typeof description === "string" && description.trim().length > 0) {
+      const analysis = await analyzeFoodDescription(description.trim(), {
+        lookup,
+      });
+      return NextResponse.json(analysis);
+    }
+
+    return NextResponse.json(
+      { error: "Missing photo or description" },
+      { status: 400 },
     );
-    return NextResponse.json(analysis);
   } catch (error) {
     console.error("Food analysis failed", error);
     return NextResponse.json(
-      { error: "Failed to analyze photo" },
+      { error: "Failed to analyze food" },
       { status: 502 },
     );
   }

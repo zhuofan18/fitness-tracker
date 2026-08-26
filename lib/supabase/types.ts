@@ -47,14 +47,29 @@ export interface FoodItem {
   fat_g: number;
 }
 
+export interface PlannedMealItem {
+  name: string;
+  quantity_description: string;
+  calories: number;
+  protein_g: number;
+  carbs_g: number;
+  fat_g: number;
+}
+
+export interface PlannedMeal {
+  name: string; // e.g. "Breakfast", "Lunch", "Dinner", "Snack"
+  items: PlannedMealItem[];
+}
+
 export interface ProgramExercise {
   name: string;
   muscle_group: MuscleGroup;
-  equipment: Equipment | "bodyweight";
+  equipment: Equipment | "bodyweight" | "custom";
   sets: number;
   rep_range: string; // e.g. "6-8"
   emphasis: boolean; // true if this targets a user-specified weak point
   note?: string; // e.g. unilateral-training guidance for a side imbalance
+  custom?: boolean; // true if filled from the user's own exercise list
 }
 
 export type Side = "left" | "right";
@@ -148,6 +163,22 @@ export interface Database {
         >;
         Relationships: [];
       };
+      water_logs: {
+        Row: {
+          id: string;
+          user_id: string;
+          amount_ml: number;
+          logged_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          amount_ml: number;
+          logged_at?: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["water_logs"]["Insert"]>;
+        Relationships: [];
+      };
       food_logs: {
         Row: {
           id: string;
@@ -186,6 +217,7 @@ export interface Database {
           carbs_g: number;
           fat_g: number;
           estimated_weekly_rate_kg: number;
+          meal_plan: PlannedMeal[];
         };
         Insert: {
           id?: string;
@@ -196,6 +228,7 @@ export interface Database {
           carbs_g: number;
           fat_g: number;
           estimated_weekly_rate_kg?: number;
+          meal_plan?: PlannedMeal[];
         };
         Update: Partial<Database["public"]["Tables"]["plans"]["Insert"]>;
         Relationships: [];
@@ -221,6 +254,25 @@ export interface Database {
           achieved_at?: string | null;
         };
         Update: Partial<Database["public"]["Tables"]["lift_goals"]["Insert"]>;
+        Relationships: [];
+      };
+      custom_exercises: {
+        Row: {
+          id: string;
+          user_id: string;
+          muscle_group: MuscleGroup;
+          exercise_name: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          muscle_group: MuscleGroup;
+          exercise_name: string;
+        };
+        Update: Partial<
+          Database["public"]["Tables"]["custom_exercises"]["Insert"]
+        >;
         Relationships: [];
       };
       training_programs: {

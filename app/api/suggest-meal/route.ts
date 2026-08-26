@@ -8,6 +8,7 @@ const BodySchema = z.object({
   remaining_protein_g: z.number(),
   remaining_carbs_g: z.number(),
   remaining_fat_g: z.number(),
+  on_hand: z.array(z.string()).optional(),
 });
 
 export async function POST(request: NextRequest) {
@@ -38,6 +39,7 @@ export async function POST(request: NextRequest) {
       remainingCarbsG: parsed.data.remaining_carbs_g,
       remainingFatG: parsed.data.remaining_fat_g,
       availableFoods: profile?.available_foods ?? [],
+      onHand: parsed.data.on_hand ?? [],
       goalDescription: profile?.goal_description ?? null,
     });
     return NextResponse.json(suggestion);

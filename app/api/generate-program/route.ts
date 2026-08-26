@@ -25,12 +25,19 @@ export async function POST() {
     );
   }
 
+  const { data: customExercises } = await supabase
+    .from("custom_exercises")
+    .select("muscle_group, exercise_name")
+    .eq("user_id", user.id)
+    .order("created_at", { ascending: true });
+
   const weeklySchedule = generateWeeklySchedule(
     profile.days_per_week,
     profile.split_style,
     profile.weak_points,
     profile.equipment,
     profile.imbalances,
+    customExercises ?? [],
   );
   const mesocycle = generateMesocycle();
 

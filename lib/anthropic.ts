@@ -64,6 +64,141 @@ export async function analyzeFoodPhoto(
   return response.parsed_output;
 }
 
+const MealPlanSchema = z.object({
+  meals: z.array(
+    z.object({
+      name: z.string(),
+      items: z.array(
+        z.object({
+          name: z.string(),
+          quantity_description: z.string(),
+          calories: z.number(),
+          protein_g: z.number(),
+          carbs_g: z.number(),
+          fat_g: z.number(),
+        }),
+      ),
+    }),
+  ),
+});
+
+export async function generateMealPlan(input: {
+  calorieTarget: number;
+  proteinG: number;
+  carbsG: number;
+  fatG: number;
+  availableFoods: string[];
+  goalDescription: string | null;
+}): Promise<z.infer<typeof MealPlanSchema>["meals"]> {
+  const response = await client.messages.parse({
+    model: FOOD_ANALYSIS_MODEL,
+    max_tokens: 4096,
+    system:
+      "You are a practical nutrition assistant. Curate a full day's meals (breakfast, lunch, dinner, and a snack if useful) that together hit the person's daily targets as closely as possible. Build every meal ONLY from the foods they say they usually have available - never suggest a food outside that list. Use realistic portion sizes and standard nutrition values for common foods.",
+    messages: [
+      {
+        role: "user",
+        content: `Daily targets: ${Math.round(input.calorieTarget)} kcal, ${Math.round(input.proteinG)}g protein, ${Math.round(input.carbsG)}g carbs, ${Math.round(input.fatG)}g fat.
+
+Foods usually available to me: ${input.availableFoods.length > 0 ? input.availableFoods.join(", ") : "(none specified - use common pantry staples)"}.
+${input.goalDescription ? `My goal: ${input.goalDescription}` : ""}
+
+Curate a day of meals (with quantities) from those foods that gets as close as possible to the daily targets in total.`,
+      },
+    ],
+    output_config: {
+      format: zodOutputFormat(MealPlanSchema),
+    },
+  });
+
+  if (!response.parsed_output) {
+    throw new Error("Failed to parse meal plan response");
+  }
+
+  return response.parsed_output.meals;
+}
+
+// For dishes the user isn't sure how to describe precisely (e.g. an
+// unfamiliar cuisine) - looks the dish up so the macro-estimation call below
+// has something more concrete than the user's own guess to work from.
+// Structured output (messages.parse) doesn't combine with tool use in one
+// call, so this runs as a separate plain-text step first.
+async function identifyDishViaWebSearch(description: string): Promise<string> {
+  const webSearchTool = {
+    type: "web_search_20260209" as const,
+    name: "web_search" as const,
+    max_uses: 3,
+  };
+
+  let messages: Anthropic.MessageParam[] = [
+    {
+      role: "user",
+      content: `Someone is logging a meal but isn't sure what the dish is called or what's typically in it. Search the web if needed to identify it, then summarize in a couple of sentences: what it's called, its typical ingredients, and a standard serving size.
+
+Their description: "${description}"`,
+    },
+  ];
+
+  let response = await client.messages.create({
+    model: FOOD_ANALYSIS_MODEL,
+    max_tokens: 1024,
+    tools: [webSearchTool],
+    messages,
+  });
+
+  // A server-tool turn can pause mid-search; resume until it actually finishes.
+  for (let i = 0; i < 3 && response.stop_reason === "pause_turn"; i++) {
+    messages = [...messages, { role: "assistant", content: response.content }];
+    response = await client.messages.create({
+      model: FOOD_ANALYSIS_MODEL,
+      max_tokens: 1024,
+      tools: [webSearchTool],
+      messages,
+    });
+  }
+
+  return response.content
+    .filter((block): block is Anthropic.TextBlock => block.type === "text")
+    .map((block) => block.text)
+    .join("\n");
+}
+
+export async function analyzeFoodDescription(
+  description: string,
+  options: { lookup?: boolean } = {},
+): Promise<FoodAnalysis> {
+  let research = "";
+  if (options.lookup) {
+    try {
+      research = await identifyDishViaWebSearch(description);
+    } catch (error) {
+      console.error("Dish lookup failed", error);
+    }
+  }
+
+  const response = await client.messages.parse({
+    model: FOOD_ANALYSIS_MODEL,
+    max_tokens: 4096,
+    messages: [
+      {
+        role: "user",
+        content: `Someone is logging a meal they don't have a photo of. Based on this description, identify each distinct food item and estimate its portion size in grams, calories, and macros (protein/carbs/fat in grams). Also give the totals across all items and your overall confidence in the estimate - confidence should be "low" unless the description gives clear quantities, since there's no photo to verify against.
+
+Description: "${description}"${research ? `\n\nWeb research on this dish: ${research}` : ""}`,
+      },
+    ],
+    output_config: {
+      format: zodOutputFormat(FoodAnalysisSchema),
+    },
+  });
+
+  if (!response.parsed_output) {
+    throw new Error("Failed to parse food analysis response");
+  }
+
+  return response.parsed_output;
+}
+
 export const ProgressPhotoAnalysisSchema = z.object({
   suggested_emphasis_muscle_groups: z.array(z.enum(MUSCLE_GROUPS)),
   suggestion_reasoning: z
@@ -194,22 +329,25 @@ export async function suggestMealFromAvailableFoods(input: {
   remainingCarbsG: number;
   remainingFatG: number;
   availableFoods: string[];
+  onHand: string[];
   goalDescription: string | null;
 }): Promise<MealSuggestion> {
+  const noFoodsSpecified =
+    input.availableFoods.length === 0 && input.onHand.length === 0;
   const response = await client.messages.parse({
     model: FOOD_ANALYSIS_MODEL,
     max_tokens: 2048,
     system:
-      "You are a practical nutrition assistant. Build a meal ONLY from the foods the person says they have available - never suggest a food outside that list. Use realistic portion sizes and standard nutrition values for common foods.",
+      "You are a practical nutrition assistant. Build a meal ONLY from the foods the person says they have - never suggest a food outside those lists. If they have foods on hand right now, strongly prefer those over their general pantry list. Use realistic portion sizes and standard nutrition values for common foods.",
     messages: [
       {
         role: "user",
         content: `Remaining targets for today: ${Math.round(input.remainingCalories)} kcal, ${Math.round(input.remainingProteinG)}g protein, ${Math.round(input.remainingCarbsG)}g carbs, ${Math.round(input.remainingFatG)}g fat.
 
-Foods available to me: ${input.availableFoods.length > 0 ? input.availableFoods.join(", ") : "(none specified - use common pantry staples)"}.
+${input.onHand.length > 0 ? `Foods I have on hand right now (prefer these): ${input.onHand.join(", ")}.\n` : ""}Foods usually available to me: ${input.availableFoods.length > 0 ? input.availableFoods.join(", ") : noFoodsSpecified ? "(none specified - use common pantry staples)" : "(none beyond what I have on hand right now)"}.
 ${input.goalDescription ? `My goal: ${input.goalDescription}` : ""}
 
-Suggest a meal using only the available foods (with quantities) that gets as close as possible to the remaining targets.`,
+Suggest a meal using only those foods (with quantities) that gets as close as possible to the remaining targets.`,
       },
     ],
     output_config: {

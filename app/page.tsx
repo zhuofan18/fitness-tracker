@@ -1,69 +1,161 @@
-import Image from "next/image";
+import Link from "next/link";
+import { redirect } from "next/navigation";
+import MealSuggestion from "@/components/MealSuggestion";
+import { createClient } from "@/lib/supabase/server";
 
-export default function Home() {
+export default async function DashboardPage() {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) redirect("/login");
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("user_id")
+    .eq("user_id", user.id)
+    .maybeSingle();
+
+  if (!profile) redirect("/onboarding");
+
+  const { data: plan } = await supabase
+    .from("plans")
+    .select("*")
+    .eq("user_id", user.id)
+    .order("generated_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  const startOfDay = new Date();
+  startOfDay.setHours(0, 0, 0, 0);
+
+  const { data: todaysLogs } = await supabase
+    .from("food_logs")
+    .select("*")
+    .eq("user_id", user.id)
+    .gte("logged_at", startOfDay.toISOString())
+    .order("logged_at", { ascending: false });
+
+  const totals = (todaysLogs ?? []).reduce(
+    (acc, log) => ({
+      calories: acc.calories + log.calories,
+      protein_g: acc.protein_g + log.protein_g,
+      carbs_g: acc.carbs_g + log.carbs_g,
+      fat_g: acc.fat_g + log.fat_g,
+    }),
+    { calories: 0, protein_g: 0, carbs_g: 0, fat_g: 0 },
+  );
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert h-5 w-[100px]"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the{" "}
-            <code className="rounded bg-black/[.06] px-1.5 py-0.5 font-mono text-[0.9em] dark:bg-white/[.08]">
-              page.tsx
-            </code>{" "}
-            file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
+    <div className="flex flex-col gap-8">
+      <div>
+        <h1 className="text-2xl font-semibold">Today</h1>
+        <p className="text-sm text-black/60 dark:text-white/60">
+          {new Date().toLocaleDateString(undefined, {
+            weekday: "long",
+            month: "long",
+            day: "numeric",
+          })}
+        </p>
+      </div>
+
+      {plan ? (
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+          <Stat label="Calories" value={totals.calories} target={plan.calorie_target} />
+          <Stat label="Protein" value={totals.protein_g} target={plan.protein_g} unit="g" />
+          <Stat label="Carbs" value={totals.carbs_g} target={plan.carbs_g} unit="g" />
+          <Stat label="Fat" value={totals.fat_g} target={plan.fat_g} unit="g" />
+        </div>
+      ) : (
+        <p className="text-sm text-black/60 dark:text-white/60">
+          No nutrition plan yet.{" "}
+          <Link href="/plan" className="underline">
+            Generate one
+          </Link>
+          .
+        </p>
+      )}
+
+      <div className="flex flex-wrap items-center gap-3">
+        <Link
+          href="/log/new"
+          className="w-fit rounded bg-black px-4 py-2 text-sm text-white dark:bg-white dark:text-black"
+        >
+          + Log food
+        </Link>
+        {plan && (
+          <MealSuggestion
+            remaining={{
+              calories: plan.calorie_target - totals.calories,
+              protein_g: plan.protein_g - totals.protein_g,
+              carbs_g: plan.carbs_g - totals.carbs_g,
+              fat_g: plan.fat_g - totals.fat_g,
+            }}
+          />
+        )}
+      </div>
+
+      <div>
+        <h2 className="mb-2 text-lg font-semibold">Today&apos;s meals</h2>
+        {(todaysLogs ?? []).length === 0 ? (
+          <p className="text-sm text-black/60 dark:text-white/60">
+            Nothing logged yet today.
           </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert h-[14px] w-4"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={14}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
+        ) : (
+          <ul className="flex flex-col gap-2">
+            {(todaysLogs ?? []).map((log) => (
+              <li
+                key={log.id}
+                className="rounded border border-black/10 px-3 py-2 text-sm dark:border-white/10"
+              >
+                <div className="flex justify-between">
+                  <span>
+                    {(log.items as { name: string }[])
+                      .map((item) => item.name)
+                      .join(", ") || "Meal"}
+                  </span>
+                  <span className="text-black/60 dark:text-white/60">
+                    {log.calories} kcal
+                  </span>
+                </div>
+                <p className="text-black/50 dark:text-white/50">
+                  P {log.protein_g}g · C {log.carbs_g}g · F {log.fat_g}g
+                </p>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function Stat({
+  label,
+  value,
+  target,
+  unit,
+}: {
+  label: string;
+  value: number;
+  target: number;
+  unit?: string;
+}) {
+  const pct = target > 0 ? Math.min(Math.round((value / target) * 100), 999) : 0;
+  return (
+    <div className="rounded border border-black/10 p-3 dark:border-white/10">
+      <p className="text-xs text-black/60 dark:text-white/60">{label}</p>
+      <p className="text-lg font-semibold">
+        {Math.round(value)}
+        {unit}
+        <span className="text-sm font-normal text-black/50 dark:text-white/50">
+          {" "}
+          / {Math.round(target)}
+          {unit}
+        </span>
+      </p>
+      <p className="text-xs text-black/40 dark:text-white/40">{pct}%</p>
     </div>
   );
 }

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import CustomExerciseForm from "@/components/CustomExerciseForm";
 import LiftGoalForm from "@/components/LiftGoalForm";
+import MacroBar from "@/components/MacroBar";
 import RegenerateButton from "@/components/RegenerateButton";
 import { createClient } from "@/lib/supabase/server";
 
@@ -121,24 +122,28 @@ export default async function PlanPage() {
                   return (
                     <div
                       key={i}
-                      className="rounded border border-black/10 p-3 text-sm dark:border-white/10"
+                      className="rounded-xl border border-black/10 bg-black/[0.02] p-4 text-sm dark:border-white/10 dark:bg-white/[0.03]"
                     >
-                      <div className="mb-2 flex justify-between font-semibold">
-                        <span>{meal.name}</span>
-                        <span className="text-black/50 dark:text-white/50">
-                          {Math.round(totals.calories)} kcal
-                        </span>
+                      <div className="mb-3 flex items-center justify-between">
+                        <span className="font-semibold">{meal.name}</span>
                       </div>
-                      <ul className="flex flex-col gap-1">
+                      <MacroBar
+                        calories={totals.calories}
+                        protein_g={totals.protein_g}
+                        carbs_g={totals.carbs_g}
+                        fat_g={totals.fat_g}
+                      />
+                      <ul className="mt-3 flex flex-col gap-1.5 border-t border-black/10 pt-3 dark:border-white/10">
                         {meal.items.map((item, j) => (
                           <li key={j} className="flex justify-between">
-                            <span>
-                              {item.name} - {item.quantity_description}
+                            <span className="font-medium">
+                              {item.name}
+                              <span className="ml-1.5 font-normal text-black/50 dark:text-white/50">
+                                {item.quantity_description}
+                              </span>
                             </span>
                             <span className="text-black/50 dark:text-white/50">
-                              P{Math.round(item.protein_g)} C
-                              {Math.round(item.carbs_g)} F
-                              {Math.round(item.fat_g)}
+                              {Math.round(item.calories)} kcal
                             </span>
                           </li>
                         ))}

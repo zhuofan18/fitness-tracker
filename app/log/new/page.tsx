@@ -2,6 +2,8 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import ConfidenceBadge from "@/components/ConfidenceBadge";
+import MacroBar from "@/components/MacroBar";
 import { createClient } from "@/lib/supabase/client";
 import type { FoodItem } from "@/lib/supabase/types";
 
@@ -241,50 +243,58 @@ export default function NewLogPage() {
 
       {result && (
         <div className="flex flex-col gap-4">
-          <p className="text-sm text-black/60 dark:text-white/60">
-            Confidence: {result.confidence}. Review and edit before saving.
+          <div className="rounded-xl border border-black/10 bg-black/[0.02] p-4 dark:border-white/10 dark:bg-white/[0.03]">
+            <div className="mb-3 flex items-center justify-between">
+              <span className="text-sm font-medium">Estimated total</span>
+              <ConfidenceBadge confidence={result.confidence} />
+            </div>
+            <MacroBar
+              calories={result.total_calories}
+              protein_g={result.total_protein_g}
+              carbs_g={result.total_carbs_g}
+              fat_g={result.total_fat_g}
+            />
+          </div>
+
+          <p className="text-xs text-black/50 dark:text-white/50">
+            Review and edit the items below before saving.
           </p>
 
           <div className="flex flex-col gap-3">
             {result.items.map((item, i) => (
               <div
                 key={i}
-                className="grid grid-cols-2 gap-2 rounded border border-black/10 p-3 text-sm sm:grid-cols-6 dark:border-white/10"
+                className="rounded-xl border border-black/10 p-3 text-sm dark:border-white/10"
               >
                 <input
-                  className="col-span-2 rounded border border-black/20 px-2 py-1 sm:col-span-2 dark:border-white/20"
+                  className="mb-2 w-full rounded border border-black/20 px-2 py-1 font-medium dark:border-white/20"
                   value={item.name}
                   onChange={(e) => updateItem(i, "name", e.target.value)}
                 />
-                <NumberField
-                  label="grams"
-                  value={item.estimated_grams}
-                  onChange={(v) => updateItem(i, "estimated_grams", v)}
-                />
-                <NumberField
-                  label="kcal"
-                  value={item.calories}
-                  onChange={(v) => updateItem(i, "calories", v)}
-                />
-                <NumberField
-                  label="protein g"
-                  value={item.protein_g}
-                  onChange={(v) => updateItem(i, "protein_g", v)}
-                />
-                <NumberField
-                  label="carbs g"
-                  value={item.carbs_g}
-                  onChange={(v) => updateItem(i, "carbs_g", v)}
-                />
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                  <NumberField
+                    label="grams"
+                    value={item.estimated_grams}
+                    onChange={(v) => updateItem(i, "estimated_grams", v)}
+                  />
+                  <NumberField
+                    label="kcal"
+                    value={item.calories}
+                    onChange={(v) => updateItem(i, "calories", v)}
+                  />
+                  <NumberField
+                    label="protein g"
+                    value={item.protein_g}
+                    onChange={(v) => updateItem(i, "protein_g", v)}
+                  />
+                  <NumberField
+                    label="carbs g"
+                    value={item.carbs_g}
+                    onChange={(v) => updateItem(i, "carbs_g", v)}
+                  />
+                </div>
               </div>
             ))}
-          </div>
-
-          <div className="rounded border border-black/10 p-3 text-sm font-medium dark:border-white/10">
-            Total: {Math.round(result.total_calories)} kcal · P{" "}
-            {Math.round(result.total_protein_g)}g · C{" "}
-            {Math.round(result.total_carbs_g)}g · F{" "}
-            {Math.round(result.total_fat_g)}g
           </div>
 
           <button

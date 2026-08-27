@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import MacroBar from "@/components/MacroBar";
 import TagInput from "@/components/TagInput";
 
 interface Suggestion {
@@ -85,12 +86,21 @@ export default function MealSuggestion({
       </button>
       {error && <p className="text-xs text-red-600">{error}</p>}
       {suggestion && (
-        <div className="flex flex-col gap-1 rounded border border-black/10 p-3 text-sm dark:border-white/10">
-          <ul className="flex flex-col gap-1">
+        <div className="flex flex-col gap-3 rounded-xl border border-black/10 bg-black/[0.02] p-4 text-sm dark:border-white/10 dark:bg-white/[0.03]">
+          <MacroBar
+            calories={suggestion.items.reduce((s, i) => s + i.calories, 0)}
+            protein_g={suggestion.items.reduce((s, i) => s + i.protein_g, 0)}
+            carbs_g={suggestion.items.reduce((s, i) => s + i.carbs_g, 0)}
+            fat_g={suggestion.items.reduce((s, i) => s + i.fat_g, 0)}
+          />
+          <ul className="flex flex-col gap-1.5 border-t border-black/10 pt-3 dark:border-white/10">
             {suggestion.items.map((item, i) => (
               <li key={i} className="flex justify-between">
-                <span>
-                  {item.name} - {item.quantity_description}
+                <span className="font-medium">
+                  {item.name}
+                  <span className="ml-1.5 font-normal text-black/50 dark:text-white/50">
+                    {item.quantity_description}
+                  </span>
                 </span>
                 <span className="text-black/50 dark:text-white/50">
                   {Math.round(item.calories)} kcal

@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { analyzeFoodDescription, analyzeFoodPhoto } from "@/lib/anthropic";
+import { identifyDishViaWebSearch } from "@/lib/anthropic";
+import {
+  analyzeFoodDescriptionViaGroq,
+  analyzeFoodPhotoViaGroq,
+} from "@/lib/groq";
 import { createClient } from "@/lib/supabase/server";
 
 const ALLOWED_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
@@ -34,7 +38,7 @@ export async function POST(request: NextRequest) {
 
       const arrayBuffer = await file.arrayBuffer();
       const base64 = Buffer.from(arrayBuffer).toString("base64");
-      const analysis = await analyzeFoodPhoto(
+      const analysis = await analyzeFoodPhotoViaGroq(
         base64,
         file.type as "image/jpeg" | "image/png" | "image/webp",
       );
@@ -42,9 +46,18 @@ export async function POST(request: NextRequest) {
     }
 
     if (typeof description === "string" && description.trim().length > 0) {
-      const analysis = await analyzeFoodDescription(description.trim(), {
-        lookup,
-      });
+      let research = "";
+      if (lookup) {
+        try {
+          research = await identifyDishViaWebSearch(description.trim());
+        } catch (error) {
+          console.error("Dish lookup failed", error);
+        }
+      }
+      const analysis = await analyzeFoodDescriptionViaGroq(
+        description.trim(),
+        research,
+      );
       return NextResponse.json(analysis);
     }
 

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { suggestMealFromAvailableFoods } from "@/lib/anthropic";
+import { suggestMealFromAvailableFoodsViaGroq } from "@/lib/groq";
 import { createClient } from "@/lib/supabase/server";
 
 const BodySchema = z.object({
@@ -33,7 +33,7 @@ export async function POST(request: NextRequest) {
     .maybeSingle();
 
   try {
-    const suggestion = await suggestMealFromAvailableFoods({
+    const suggestion = await suggestMealFromAvailableFoodsViaGroq({
       remainingCalories: parsed.data.remaining_calories,
       remainingProteinG: parsed.data.remaining_protein_g,
       remainingCarbsG: parsed.data.remaining_carbs_g,

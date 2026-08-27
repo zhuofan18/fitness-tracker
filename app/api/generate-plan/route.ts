@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { generateMealPlan } from "@/lib/anthropic";
+import { generateMealPlanViaGroq } from "@/lib/groq";
 import { generateNutritionPlan } from "@/lib/plan";
 import { createClient } from "@/lib/supabase/server";
 
@@ -53,9 +53,9 @@ export async function POST() {
   // The macro targets above are the load-bearing part of this route and are
   // computed deterministically - a hiccup in the AI-curated meal plan
   // shouldn't block saving them, so this is best-effort with a fallback.
-  let mealPlan: Awaited<ReturnType<typeof generateMealPlan>> = [];
+  let mealPlan: Awaited<ReturnType<typeof generateMealPlanViaGroq>> = [];
   try {
-    mealPlan = await generateMealPlan({
+    mealPlan = await generateMealPlanViaGroq({
       calorieTarget: plan.calorie_target,
       proteinG: plan.protein_g,
       carbsG: plan.carbs_g,
